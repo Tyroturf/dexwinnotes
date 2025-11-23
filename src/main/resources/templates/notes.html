@@ -3,10 +3,11 @@
 <head>
     <title>Dexwin Notes</title>
     <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <style>
         body { margin:0; font-family: system-ui, sans-serif; background:#020617; color:#e5e7eb; }
         header {
-            padding:1rem 1.5rem;
+            padding:1rem 1.25rem;
             border-bottom:1px solid #1f2937;
             display:flex;
             align-items:center;
@@ -16,7 +17,7 @@
             top:0;
             z-index:10;
         }
-        .logo { font-weight:600; }
+        .logo { font-weight:600; font-size:0.95rem; }
         .controls { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
         input, select {
             padding:0.4rem 0.6rem;
@@ -25,9 +26,10 @@
             background:#020617;
             color:#e5e7eb;
             font-size:0.85rem;
+            box-sizing:border-box;
         }
-        main { padding:1rem 1.5rem; max-width:900px; margin:0 auto; }
-        .toolbar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+        main { padding:1rem 1.25rem 1.5rem; max-width:900px; margin:0 auto; box-sizing:border-box; }
+        .toolbar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem; }
         button {
             border:none;
             border-radius:999px;
@@ -39,7 +41,7 @@
         }
         button.primary { background:#2563eb; color:white; }
         button.danger { background:#b91c1c; }
-        .note-list { display:flex; flex-direction:column; gap:0.75rem; }
+        .note-list { display:flex; flex-direction:column; gap:0.75rem; margin-top:0.5rem; }
         .note {
             border-radius:0.75rem;
             padding:0.75rem 0.9rem;
@@ -50,13 +52,14 @@
         .note-title { font-weight:600; margin-bottom:0.25rem; }
         .note-tags { font-size:0.75rem; color:#9ca3af; margin-bottom:0.25rem; }
         .note-meta { font-size:0.7rem; color:#6b7280; }
-        .note-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
+        .note-actions { display:flex; gap:0.5rem; margin-top:0.5rem; flex-wrap:wrap; }
         .pagination {
             display:flex;
             align-items:center;
             gap:0.5rem;
             margin-top:1rem;
             font-size:0.8rem;
+            flex-wrap:wrap;
         }
         .badge {
             display:inline-block;
@@ -80,7 +83,10 @@
             padding:1rem 1.25rem;
             width:420px;
             max-width:100%;
+            max-height:90vh;
+            overflow:auto;
             border:1px solid #1f2937;
+            box-sizing:border-box;
         }
         textarea {
             width:100%;
@@ -92,6 +98,7 @@
             background:#020617;
             color:#e5e7eb;
             font-size:0.85rem;
+            box-sizing:border-box;
         }
         .field { margin-top:0.6rem; }
         .field label {
@@ -101,17 +108,56 @@
             margin-bottom:0.15rem;
         }
         .error { color:#fca5a5; font-size:0.75rem; margin-top:0.25rem; }
+        .status {
+            font-size:0.8rem;
+            min-height:1.2em;
+            margin-bottom:0.5rem;
+        }
+        .status.error {
+            color:#fca5a5;
+        }
+        .status.success {
+            color:#bbf7d0;
+        }
+
+        @media (max-width: 640px) {
+            header {
+                flex-direction:column;
+                align-items:flex-start;
+                gap:0.5rem;
+            }
+            .controls {
+                width:100%;
+                justify-content:flex-start;
+            }
+            .controls button {
+                flex:1;
+                text-align:center;
+            }
+            .toolbar {
+                flex-direction:column;
+                align-items:stretch;
+            }
+            .toolbar > * {
+                width:100%;
+            }
+            main {
+                padding:0.75rem 1rem 1.25rem;
+            }
+        }
     </style>
 </head>
 <body>
 <header>
     <div class="logo">Dexwin Notes</div>
     <div class="controls">
-        <button onclick="openModal()">+ New note</button>
+        <button class="primary" onclick="openModal()">+ New note</button>
         <button onclick="logout()">Logout</button>
     </div>
 </header>
 <main>
+    <div class="status" id="status"></div>
+
     <div class="toolbar">
         <input id="search" placeholder="Search title/content..." style="flex:1; min-width:140px;"/>
         <input id="tagsFilter" placeholder="Tags (comma separated)" style="min-width:140px;"/>
@@ -126,6 +172,7 @@
         </select>
         <button class="primary" onclick="loadNotes(0)">Apply</button>
     </div>
+
     <div class="note-list" id="noteList"></div>
     <div class="pagination" id="pagination"></div>
 </main>
@@ -147,7 +194,7 @@
             <label>Tags (comma separated)</label>
             <input id="noteTags"/>
         </div>
-        <div style="margin-top:0.75rem; display:flex; justify-content:flex-end; gap:0.5rem;">
+        <div style="margin-top:0.75rem; display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
             <button onclick="closeModal()">Cancel</button>
             <button class="primary" onclick="saveNote()">Save</button>
         </div>
@@ -157,6 +204,15 @@
 <script>
     let currentPage = 0;
     let editingNote = null;
+
+    const statusBox = document.getElementById("status");
+
+    function setStatus(message, isError) {
+        statusBox.textContent = message || "";
+        statusBox.classList.remove("error", "success");
+        if (!message) return;
+        statusBox.classList.add(isError ? "error" : "success");
+    }
 
     function token() {
         return localStorage.getItem("notes_token");
@@ -224,8 +280,10 @@
             }
             const data = await res.json();
             renderNotes(data);
+            setStatus("", false);
         } catch (e) {
             console.error(e);
+            setStatus("Could not load notes. Please try again.", true);
         }
     }
 
@@ -237,7 +295,7 @@
             div.className = "note" + (n.deletedAt ? " deleted" : "");
             const tagsHtml = (n.tags || "").split(",")
                 .filter(Boolean)
-                .map(t => "<span class='badge'>" + t + "</span>")
+                .map(t => "<span class='badge'>" + t.trim() + "</span>")
                 .join("");
             div.innerHTML = `
                 <div class="note-title">${n.title}</div>
@@ -247,9 +305,10 @@
                 </div>
                 <div class="note-actions">
                     <button onclick='openModal(${JSON.stringify(n)})'>Edit</button>
-                    ${n.deletedAt
-                        ? "<button onclick='restoreNote(" + n.id + ")'>Restore</button>"
-                        : "<button class='danger' onclick='deleteNote(" + n.id + ")'>Delete</button>"
+                    ${
+                        n.deletedAt
+                            ? "<button onclick='restoreNote(" + n.id + ")'>Restore</button>"
+                            : "<button class='danger' onclick='deleteNote(" + n.id + ")'>Delete</button>"
                     }
                 </div>
             `;
@@ -305,41 +364,78 @@
                 body: JSON.stringify(payload)
             });
             if (res.status === 409) {
-                alert("Note was updated elsewhere. Refresh list and try again.");
+                setStatus("Note was updated elsewhere. Refresh list and try again.", true);
                 return;
             }
             if (!res.ok) {
-                const data = await res.json();
+                let data = {};
+                try { data = await res.json(); } catch (_) {}
                 console.error(data);
-                alert("Could not save note.");
+                setStatus("Could not save note. Please try again.", true);
                 return;
             }
             closeModal();
+            setStatus(editingNote ? "Note updated." : "Note created.", false);
             loadNotes(currentPage);
         } catch (e) {
             console.error(e);
+            setStatus("Could not save note. Please try again.", true);
         }
     }
 
     async function deleteNote(id) {
         ensureAuth();
-        await fetch("/api/notes/" + id + "/delete", {
-            method: "POST",
-            headers: { "Authorization": "Bearer " + token() }
-        });
-        loadNotes(currentPage);
+        try {
+            const res = await fetch("/api/notes/" + id + "/delete", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + token() }
+            });
+            if (!res.ok) {
+                setStatus("Could not delete note.", true);
+                return;
+            }
+            setStatus("Note deleted.", false);
+            loadNotes(currentPage);
+        } catch (e) {
+            console.error(e);
+            setStatus("Could not delete note.", true);
+        }
     }
 
     async function restoreNote(id) {
         ensureAuth();
-        await fetch("/api/notes/" + id + "/restore", {
-            method: "POST",
-            headers: { "Authorization": "Bearer " + token() }
-        });
-        loadNotes(currentPage);
+        try {
+            const res = await fetch("/api/notes/" + id + "/restore", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + token() }
+            });
+            if (!res.ok) {
+                setStatus("Could not restore note.", true);
+                return;
+            }
+            setStatus("Note restored.", false);
+            loadNotes(currentPage);
+        } catch (e) {
+            console.error(e);
+            setStatus("Could not restore note.", true);
+        }
     }
 
-    // ENTER key inside modal submits Save
+    // ENTER in search / tags triggers reload on the current page
+    document.getElementById("search").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            loadNotes(0);
+        }
+    });
+    document.getElementById("tagsFilter").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            loadNotes(0);
+        }
+    });
+
+    // ENTER key inside modal submits Save (title/content/tags fields)
     document.addEventListener("keydown", function (e) {
         const modalVisible = document.getElementById("modalBackdrop").style.display === "flex";
         if (!modalVisible) return;

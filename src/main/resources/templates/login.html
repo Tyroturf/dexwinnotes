@@ -3,6 +3,7 @@
 <head>
     <title>Dexwin Notes - Login</title>
     <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <style>
         body {
             font-family: system-ui, sans-serif;
@@ -11,20 +12,24 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
         }
         .card {
             background: #020617;
-            padding: 2rem;
+            padding: 1.75rem;
             border-radius: 1rem;
-            width: 320px;
+            width: 100%;
+            max-width: 360px;
             box-shadow: 0 20px 40px rgba(15, 23, 42, 0.6);
             border: 1px solid #1e293b;
+            box-sizing: border-box;
         }
         h1 {
             margin-top: 0;
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             text-align: center;
         }
         label {
@@ -41,10 +46,11 @@
             border: 1px solid #1f2937;
             background: #020617;
             color: #e5e7eb;
+            box-sizing: border-box;
         }
         button {
             width: 100%;
-            padding: 0.6rem;
+            padding: 0.65rem;
             margin-top: 1rem;
             border-radius: 0.75rem;
             border: none;
@@ -53,11 +59,16 @@
             font-weight: 500;
             cursor: pointer;
         }
-        .error {
-            color: #fca5a5;
+        .status {
             margin-top: 0.5rem;
             font-size: 0.8rem;
-            min-height: 1em;
+            min-height: 1.2em;
+        }
+        .status.error {
+            color: #fca5a5;
+        }
+        .status.success {
+            color: #bbf7d0;
         }
         .tabs {
             display: flex;
@@ -77,6 +88,15 @@
             background: #111827;
             border-color: #2563eb;
         }
+
+        @media (max-width: 400px) {
+            .card {
+                padding: 1.25rem;
+            }
+            h1 {
+                font-size: 1.1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -86,7 +106,7 @@
         <div class="tab" id="tab-signup">Sign up</div>
     </div>
     <h1 id="form-title">Welcome back</h1>
-    <div class="error" id="error"></div>
+    <div class="status" id="status"></div>
     <label>Email
         <input id="email" type="email" autocomplete="email"/>
     </label>
@@ -101,7 +121,16 @@
     const tabSignup = document.getElementById("tab-signup");
     const title = document.getElementById("form-title");
     const submit = document.getElementById("submit");
-    const errorBox = document.getElementById("error");
+    const statusBox = document.getElementById("status");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+
+    function setStatus(message, isError) {
+        statusBox.textContent = message || "";
+        statusBox.classList.remove("error", "success");
+        if (!message) return;
+        statusBox.classList.add(isError ? "error" : "success");
+    }
 
     function setMode(m) {
         mode = m;
@@ -116,44 +145,68 @@
             title.textContent = "Create account";
             submit.textContent = "Sign up";
         }
-        errorBox.textContent = "";
+        setStatus("", false);
+        passwordInput.value = "";
+        passwordInput.focus();
     }
 
     tabLogin.onclick = () => setMode("login");
     tabSignup.onclick = () => setMode("signup");
 
     async function handleSubmit() {
-        errorBox.textContent = "";
-        const email = document.getElementById("email").value.trim();
-        const password = document.getElementById("password").value.trim();
+        setStatus("", false);
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
         if (!email || !password) {
-            errorBox.textContent = "Email and password are required.";
+            setStatus("Email and password are required.", true);
             return;
         }
         const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+
         try {
             const res = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password })
             });
-            const data = await res.json();
+
+            let data = {};
+            try {
+                data = await res.json();
+            } catch (_) {
+                // ignore JSON parse errors
+            }
+
             if (!res.ok) {
-                errorBox.textContent = data.detail || "Authentication failed.";
+                setStatus(data.detail || "Authentication failed.", true);
                 return;
             }
-            localStorage.setItem("notes_token", data.token);
-            window.location.href = "/notes";
+
+            if (mode === "signup") {
+                setStatus("Account created. Logging you in...", false);
+            } else {
+                setStatus("Login successful. Redirecting...", false);
+            }
+
+            if (data.token) {
+                localStorage.setItem("notes_token", data.token);
+            }
+            // Small delay so the success message is visible on fast networks
+            setTimeout(() => {
+                window.location.href = "/notes";
+            }, 400);
+
         } catch (e) {
-            errorBox.textContent = "Network error.";
+            setStatus("Network error. Please try again.", true);
         }
     }
 
     submit.onclick = handleSubmit;
 
-    // ENTER key submits login/sign-up
+    // ENTER key submits login/sign-up (but not if focused elsewhere like mobile keyboards' "next")
     document.addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
+            // Avoid double-submit if browser is already submitting the form
             e.preventDefault();
             handleSubmit();
         }
