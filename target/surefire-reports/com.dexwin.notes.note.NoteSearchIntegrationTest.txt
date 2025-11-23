@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.dexwin.notes.note.NoteSearchIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.267 s -- in com.dexwin.notes.note.NoteSearchIntegrationTest

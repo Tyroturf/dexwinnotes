@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Dexwin Notes</title>
+    <meta charset="UTF-8"/>
+    <style>
+        body { margin:0; font-family: system-ui, sans-serif; background:#020617; color:#e5e7eb; }
+        header {
+            padding:1rem 1.5rem;
+            border-bottom:1px solid #1f2937;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            background:#020617;
+            position:sticky;
+            top:0;
+            z-index:10;
+        }
+        .logo { font-weight:600; }
+        .controls { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+        input, select {
+            padding:0.4rem 0.6rem;
+            border-radius:0.5rem;
+            border:1px solid #1f2937;
+            background:#020617;
+            color:#e5e7eb;
+            font-size:0.85rem;
+        }
+        main { padding:1rem 1.5rem; max-width:900px; margin:0 auto; }
+        .toolbar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+        button {
+            border:none;
+            border-radius:999px;
+            padding:0.45rem 0.9rem;
+            font-size:0.85rem;
+            cursor:pointer;
+            background:#1f2937;
+            color:#e5e7eb;
+        }
+        button.primary { background:#2563eb; color:white; }
+        button.danger { background:#b91c1c; }
+        .note-list { display:flex; flex-direction:column; gap:0.75rem; }
+        .note {
+            border-radius:0.75rem;
+            padding:0.75rem 0.9rem;
+            background:#020617;
+            border:1px solid #1f2937;
+        }
+        .note.deleted { opacity:0.5; border-style:dashed; }
+        .note-title { font-weight:600; margin-bottom:0.25rem; }
+        .note-tags { font-size:0.75rem; color:#9ca3af; margin-bottom:0.25rem; }
+        .note-meta { font-size:0.7rem; color:#6b7280; }
+        .note-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
+        .pagination {
+            display:flex;
+            align-items:center;
+            gap:0.5rem;
+            margin-top:1rem;
+            font-size:0.8rem;
+        }
+        .badge {
+            display:inline-block;
+            padding:0.05rem 0.4rem;
+            border-radius:999px;
+            background:#111827;
+            margin-right:0.25rem;
+        }
+        .modal-backdrop {
+            position:fixed;
+            inset:0;
+            background:rgba(15,23,42,0.85);
+            display:none;
+            align-items:center;
+            justify-content:center;
+            z-index:20;
+        }
+        .modal {
+            background:#020617;
+            border-radius:1rem;
+            padding:1rem 1.25rem;
+            width:420px;
+            max-width:100%;
+            border:1px solid #1f2937;
+        }
+        textarea {
+            width:100%;
+            min-height:120px;
+            resize:vertical;
+            padding:0.5rem 0.75rem;
+            border-radius:0.5rem;
+            border:1px solid #1f2937;
+            background:#020617;
+            color:#e5e7eb;
+            font-size:0.85rem;
+        }
+        .field { margin-top:0.6rem; }
+        .field label {
+            display:block;
+            font-size:0.8rem;
+            color:#9ca3af;
+            margin-bottom:0.15rem;
+        }
+        .error { color:#fca5a5; font-size:0.75rem; margin-top:0.25rem; }
+    </style>
+</head>
+<body>
+<header>
+    <div class="logo">Dexwin Notes</div>
+    <div class="controls">
+        <button onclick="openModal()">+ New note</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+</header>
+<main>
+    <div class="toolbar">
+        <input id="search" placeholder="Search title/content..." style="flex:1; min-width:140px;"/>
+        <input id="tagsFilter" placeholder="Tags (comma separated)" style="min-width:140px;"/>
+        <select id="sortBy">
+            <option value="updatedAt">Updated</option>
+            <option value="createdAt">Created</option>
+            <option value="title">Title</option>
+        </select>
+        <select id="direction">
+            <option value="DESC">Desc</option>
+            <option value="ASC">Asc</option>
+        </select>
+        <button class="primary" onclick="loadNotes(0)">Apply</button>
+    </div>
+    <div class="note-list" id="noteList"></div>
+    <div class="pagination" id="pagination"></div>
+</main>
+
+<div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+        <h2 id="modalTitle">New note</h2>
+        <div class="field">
+            <label>Title</label>
+            <input id="noteTitle"/>
+            <div class="error" id="errorTitle"></div>
+        </div>
+        <div class="field">
+            <label>Content</label>
+            <textarea id="noteContent"></textarea>
+            <div class="error" id="errorContent"></div>
+        </div>
+        <div class="field">
+            <label>Tags (comma separated)</label>
+            <input id="noteTags"/>
+        </div>
+        <div style="margin-top:0.75rem; display:flex; justify-content:flex-end; gap:0.5rem;">
+            <button onclick="closeModal()">Cancel</button>
+            <button class="primary" onclick="saveNote()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPage = 0;
+    let editingNote = null;
+
+    function token() {
+        return localStorage.getItem("notes_token");
+    }
+
+    function authHeaders() {
+        return {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token()
+        };
+    }
+
+    function ensureAuth() {
+        if (!token()) {
+            window.location.href = "/login";
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem("notes_token");
+        window.location.href = "/login";
+    }
+
+    function openModal(note) {
+        editingNote = note || null;
+        document.getElementById("noteTitle").value = note ? note.title : "";
+        document.getElementById("noteContent").value = note ? note.content : "";
+        document.getElementById("noteTags").value = note ? (note.tags || "") : "";
+        document.getElementById("errorTitle").textContent = "";
+        document.getElementById("errorContent").textContent = "";
+        document.getElementById("modalTitle").textContent = note ? "Edit note" : "New note";
+        document.getElementById("modalBackdrop").style.display = "flex";
+        document.getElementById("noteTitle").focus();
+    }
+
+    function closeModal() {
+        document.getElementById("modalBackdrop").style.display = "none";
+        editingNote = null;
+    }
+
+    async function loadNotes(page) {
+        ensureAuth();
+        currentPage = page;
+        const q = document.getElementById("search").value;
+        const tags = document.getElementById("tagsFilter").value;
+        const sortBy = document.getElementById("sortBy").value;
+        const direction = document.getElementById("direction").value;
+
+        const params = new URLSearchParams({
+            page,
+            size: 5,
+            sortBy,
+            direction
+        });
+        if (q) params.append("query", q);
+        if (tags) params.append("tags", tags);
+
+        try {
+            const res = await fetch("/api/notes?" + params.toString(), {
+                headers: { "Authorization": "Bearer " + token() }
+            });
+            if (res.status === 401) {
+                logout();
+                return;
+            }
+            const data = await res.json();
+            renderNotes(data);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function renderNotes(data) {
+        const list = document.getElementById("noteList");
+        list.innerHTML = "";
+        (data.content || []).forEach(n => {
+            const div = document.createElement("div");
+            div.className = "note" + (n.deletedAt ? " deleted" : "");
+            const tagsHtml = (n.tags || "").split(",")
+                .filter(Boolean)
+                .map(t => "<span class='badge'>" + t + "</span>")
+                .join("");
+            div.innerHTML = `
+                <div class="note-title">${n.title}</div>
+                <div class="note-tags">${tagsHtml}</div>
+                <div class="note-meta">
+                    Updated: ${n.updatedAt || ""} ${n.deletedAt ? " • deleted" : ""}
+                </div>
+                <div class="note-actions">
+                    <button onclick='openModal(${JSON.stringify(n)})'>Edit</button>
+                    ${n.deletedAt
+                        ? "<button onclick='restoreNote(" + n.id + ")'>Restore</button>"
+                        : "<button class='danger' onclick='deleteNote(" + n.id + ")'>Delete</button>"
+                    }
+                </div>
+            `;
+            list.appendChild(div);
+        });
+
+        const p = document.getElementById("pagination");
+        p.innerHTML = "";
+        const info = document.createElement("span");
+        info.textContent = `Page ${data.page + 1} of ${data.totalPages || 1}`;
+        const prev = document.createElement("button");
+        prev.textContent = "Prev";
+        prev.disabled = data.page === 0;
+        prev.onclick = () => loadNotes(data.page - 1);
+        const next = document.createElement("button");
+        next.textContent = "Next";
+        next.disabled = data.page + 1 >= data.totalPages;
+        next.onclick = () => loadNotes(data.page + 1);
+        p.appendChild(prev);
+        p.appendChild(next);
+        p.appendChild(info);
+    }
+
+    async function saveNote() {
+        ensureAuth();
+        const title = document.getElementById("noteTitle").value.trim();
+        const content = document.getElementById("noteContent").value.trim();
+        const tags = document.getElementById("noteTags").value.trim();
+        document.getElementById("errorTitle").textContent = "";
+        document.getElementById("errorContent").textContent = "";
+
+        if (!title) {
+            document.getElementById("errorTitle").textContent = "Title is required.";
+            return;
+        }
+        if (!content) {
+            document.getElementById("errorContent").textContent = "Content is required.";
+            return;
+        }
+
+        const payload = { title, content, tags };
+        if (editingNote && editingNote.version != null) {
+            payload.version = editingNote.version;
+        }
+
+        const url = editingNote ? "/api/notes/" + editingNote.id : "/api/notes";
+        const method = editingNote ? "PUT" : "POST";
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: authHeaders(),
+                body: JSON.stringify(payload)
+            });
+            if (res.status === 409) {
+                alert("Note was updated elsewhere. Refresh list and try again.");
+                return;
+            }
+            if (!res.ok) {
+                const data = await res.json();
+                console.error(data);
+                alert("Could not save note.");
+                return;
+            }
+            closeModal();
+            loadNotes(currentPage);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function deleteNote(id) {
+        ensureAuth();
+        await fetch("/api/notes/" + id + "/delete", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + token() }
+        });
+        loadNotes(currentPage);
+    }
+
+    async function restoreNote(id) {
+        ensureAuth();
+        await fetch("/api/notes/" + id + "/restore", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + token() }
+        });
+        loadNotes(currentPage);
+    }
+
+    // ENTER key inside modal submits Save
+    document.addEventListener("keydown", function (e) {
+        const modalVisible = document.getElementById("modalBackdrop").style.display === "flex";
+        if (!modalVisible) return;
+
+        if (e.key === "Enter") {
+            const active = document.activeElement;
+            if (active && (active.id === "noteTitle" || active.id === "noteContent" || active.id === "noteTags")) {
+                e.preventDefault();
+                saveNote();
+            }
+        }
+    });
+
+    ensureAuth();
+    loadNotes(0);
+</script>
+</body>
+</html>
